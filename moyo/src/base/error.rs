@@ -27,6 +27,10 @@ pub enum MoyoError {
     ArithmeticCrystalClassIdentificationError,
     #[error("Space group type identification failed")]
     SpaceGroupTypeIdentificationError,
+    #[error("Construct type identification failed")]
+    ConstructTypeIdentificationError,
+    #[error("Magnetic space group type identification failed")]
+    MagneticSpaceGroupTypeIdentificationError,
     #[error("Standardization failed")]
     StandardizationError,
     #[error("Wyckoff position assignment failed")]
