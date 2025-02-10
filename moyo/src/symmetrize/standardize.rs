@@ -381,42 +381,46 @@ fn assign_wyckoff_position(
     lattice: &Lattice,
     symprec: f64,
 ) -> Result<WyckoffPosition, MoyoError> {
-    for wyckoff in iter_wyckoff_positions(hall_number, multiplicity) {
-        // Find variable `y` and integers offset `offset` such that
-        //    | lattice * (space.linear * y + space.origin - position - offset) | < symprec.
-        // Let SNF decomposition of space.linear be
-        //    D = L * space.linear * R.
-        // lattice * (space.linear * y + space.origin - position - offset)
-        //    = lattice * (L^-1 * D * R^-1 * y + space.origin - position - offset)
-        //    = lattice * L^-1 * (D * R^-1 * y + L * (space.origin - position - offset))
+    let candidate_wyckoffs = iter_wyckoff_positions(hall_number, multiplicity)
+        .filter_map(|wyckoff| {
+            // Find variable `y` and integers offset `offset` such that
+            //    | lattice * (space.linear * y + space.origin - position - offset) | < symprec.
+            // Let SNF decomposition of space.linear be
+            //    D = L * space.linear * R.
+            // lattice * (space.linear * y + space.origin - position - offset)
+            //    = lattice * (L^-1 * D * R^-1 * y + space.origin - position - offset)
+            //    = lattice * L^-1 * (D * R^-1 * y + L * (space.origin - position - offset))
 
-        //    = lattice * (D * R^-1 * y - L * (offset + position - space.origin)
-        let space = WyckoffPositionSpace::new(wyckoff.coordinates);
-        let snf = SNF::new(&space.linear);
+            //    = lattice * (D * R^-1 * y - L * (offset + position - space.origin)
+            let space = WyckoffPositionSpace::new(wyckoff.coordinates);
+            let snf = SNF::new(&space.linear);
 
-        let iter_multi_1 = iproduct!(-1..=1, -1..=1, -1..=1);
-        let iter_multi_2 = iproduct!(-2..=2, -2..=2, -2..=2).filter(|&(n1, n2, n3)| {
-            (n1 as i32).abs() == 2 || (n2 as i32).abs() == 2 || (n3 as i32).abs() == 2
-        });
+            for offset in iproduct!(-2..=2, -2..=2, -2..=2) {
+                let offset = Vector3::new(offset.0 as f64, offset.1 as f64, offset.2 as f64);
+                let b = snf.l.map(|e| e as f64) * (offset + position - space.origin);
+                let mut rinvy = Vector3::zeros();
+                for i in 0..3 {
+                    if snf.d[(i, i)] != 0 {
+                        rinvy[i] = b[i] / snf.d[(i, i)] as f64;
+                    }
+                }
 
-        for offset in iter_multi_1.chain(iter_multi_2) {
-            let offset = Vector3::new(offset.0 as f64, offset.1 as f64, offset.2 as f64);
-            let b = snf.l.map(|e| e as f64) * (offset + position - space.origin);
-            let mut rinvy = Vector3::zeros();
-            for i in 0..3 {
-                if snf.d[(i, i)] != 0 {
-                    rinvy[i] = b[i] / snf.d[(i, i)] as f64;
+                let y = snf.r.map(|e| e as f64) * rinvy;
+                let diff = space.linear.map(|e| e as f64) * y + space.origin - position - offset;
+                let cart_diff = lattice.cartesian_coords(&diff).norm();
+                if cart_diff < symprec {
+                    return Some((cart_diff, wyckoff.clone()));
                 }
             }
+            None
+        })
+        .collect::<Vec<_>>();
 
-            let y = snf.r.map(|e| e as f64) * rinvy;
-            let diff = space.linear.map(|e| e as f64) * y + space.origin - position - offset;
-            if lattice.cartesian_coords(&diff).norm() < symprec {
-                return Ok(wyckoff.clone());
-            }
-        }
-    }
-    Err(MoyoError::WyckoffPositionAssignmentError)
+    let (_, wyckoff) = candidate_wyckoffs
+        .into_iter()
+        .min_by(|(lhs, _), (rhs, _)| lhs.partial_cmp(rhs).unwrap())
+        .ok_or(MoyoError::WyckoffPositionAssignmentError)?;
+    Ok(wyckoff)
 }
 
 /// Symmetrize positions by site symmetry groups

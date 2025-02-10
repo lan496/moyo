@@ -648,3 +648,41 @@ fn test_wyckoff_position_assignment() {
         );
     }
 }
+
+#[test]
+fn test_wyckoff_position_assignment_monoclinic() {
+    let a = 8.0;
+    let b = a;
+    let c = a;
+    let beta = 40.0_f64.to_radians();
+    let y_4e = 0.6;
+    let cell = Cell::new(
+        Lattice::new(matrix![
+            a, 0.0, 0.0;
+            0.0, b, 0.0;
+            c * beta.cos(), 0.0, c * beta.sin();
+        ]),
+        vec![
+            // Fe (4a)
+            vector![0.0, 0.0, 0.0],
+            vector![0.0, 0.0, 0.5],
+            vector![0.5, 0.5, 0.0],
+            vector![0.5, 0.5, 0.5],
+            // Ca (4e)
+            vector![0.0, y_4e, 0.25],
+            vector![0.0, -y_4e, 0.75],
+            vector![0.5, 0.5 + y_4e, 0.25],
+            vector![0.5, 0.5 - y_4e, 0.75],
+        ],
+        vec![0, 0, 0, 0, 1, 1, 1, 1],
+    );
+
+    let dataset =
+        MoyoDataset::new(&cell, 1e-4, AngleTolerance::Default, Setting::Standard).unwrap();
+    dbg!(&dataset.std_cell);
+    // 4a and 4b belong to the same Euclidean Wyckoff set for C2/c (No.15)
+    assert!(
+        dataset.wyckoffs == vec!['a', 'a', 'a', 'a', 'e', 'e', 'e', 'e']
+            || dataset.wyckoffs == vec!['b', 'b', 'b', 'b', 'e', 'e', 'e', 'e']
+    );
+}
